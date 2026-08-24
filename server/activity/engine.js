@@ -49,7 +49,7 @@ const SNAPSHOT_COMPARE_COLUMNS = SNAPSHOT_COLUMNS.filter(col => !['sync_user', '
 let scanTimer = null
 let isStarted = false
 let isScanning = false
-let credentialCursor = 0
+let credentialCursor = ''
 let nonStremioSkipWarned = false
 const accountStateHashes = new Map()
 
@@ -162,33 +162,37 @@ function computeLibraryHash(library) {
     return hashString(raw)
 }
 
-async function getRegisteredAccountsPage(limit, offset = 0) {
+async function getRegisteredAccountsPage(limit, afterId = '') {
     // Stremio-only: Nuvio/RealStream auth_key rows are JSON token bundles, not Stremio authKeys.
+    // Keyed on id rather than an offset: updated_at is written mid-rotation by
+    // token refresh and credential upsert, which moved rows past the cursor and
+    // left those accounts unscanned for the rest of the rotation.
     return db.query(
-        `SELECT sync_user, account_id, account_name, auth_key
+        `SELECT sync_user, account_id, account_name, auth_key, id
          FROM server_credentials
-         WHERE credential_type = 'stremio' OR credential_type IS NULL
-         ORDER BY updated_at DESC, id ASC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+         WHERE (credential_type = 'stremio' OR credential_type IS NULL)
+           AND ($2 = '' OR id > $2)
+         ORDER BY id ASC
+         LIMIT $1`,
+        [limit, afterId]
     )
 }
 
 async function getAccountsForCycle() {
     const limit = ACTIVITY_MAX_ACCOUNTS_PER_CYCLE
     let selected = await getRegisteredAccountsPage(limit, credentialCursor)
-    let wrappedCount = 0
 
-    if (selected.length === 0 && credentialCursor > 0) {
-        credentialCursor = 0
-        selected = await getRegisteredAccountsPage(limit, 0)
-    } else if (selected.length < limit && credentialCursor > 0) {
-        const wrapped = await getRegisteredAccountsPage(limit - selected.length, 0)
-        wrappedCount = wrapped.length
+    if (selected.length === 0 && credentialCursor !== '') {
+        credentialCursor = ''
+        selected = await getRegisteredAccountsPage(limit, '')
+    } else if (selected.length < limit && credentialCursor !== '') {
+        const wrapped = await getRegisteredAccountsPage(limit - selected.length, '')
         selected = [...selected, ...wrapped]
     }
 
-    credentialCursor = selected.length < limit ? 0 : (wrappedCount > 0 ? wrappedCount : credentialCursor + selected.length)
+    // The cursor is the last id handed out, so the next cycle resumes after it
+    // regardless of what happened to any row's updated_at in the meantime.
+    credentialCursor = selected.length < limit ? '' : selected[selected.length - 1].id
     return selected
 }
 
