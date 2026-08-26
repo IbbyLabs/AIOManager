@@ -57,13 +57,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3.5.0
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
       # ghcr rejects an uppercase path and github.repository preserves the
       # owner's casing, so the name is lowered before it reaches a ref.
       - name: Compute the ghcr image name
@@ -143,7 +136,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Skipped where the credentials are absent, which is every fork. Without
+      # this the workflow cannot complete outside this repository, so nobody can
+      # exercise it before it is merged.
       - name: Log in to Docker Hub
+        id: hub_login
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
         uses: docker/login-action@v3.5.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -192,6 +190,7 @@ jobs:
       # digests: a digest identifies an image within one registry, so the ones
       # above cannot be resolved here.
       - name: Copy the manifest to Docker Hub
+        if: steps.hub_login.outcome == 'success'
         run: |
           tag_args=()
           while read -r tag; do
