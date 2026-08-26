@@ -1,0 +1,73 @@
+name: Bench native vs QEMU
+
+# Temporary measurement workflow. Not part of the proposed change.
+on:
+  workflow_dispatch:
+    inputs:
+      scope_suffix:
+        description: Cache scope suffix, change it to force a cold run
+        required: true
+        default: "r1"
+
+jobs:
+  qemu-multiarch:
+    name: QEMU both arches (current setup)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3.6.0
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          pull: true
+          push: false
+          cache-from: type=gha,scope=bench-qemu-both-${{ inputs.scope_suffix }}
+          cache-to: type=gha,mode=max,scope=bench-qemu-both-${{ inputs.scope_suffix }}
+
+  qemu-arm64:
+    name: QEMU arm64 only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3.6.0
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/arm64
+          pull: true
+          push: false
+          cache-from: type=gha,scope=bench-qemu-arm-${{ inputs.scope_suffix }}
+          cache-to: type=gha,mode=max,scope=bench-qemu-arm-${{ inputs.scope_suffix }}
+
+  native-amd64:
+    name: Native amd64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64
+          pull: true
+          push: false
+          cache-from: type=gha,scope=bench-native-amd64-${{ inputs.scope_suffix }}
+          cache-to: type=gha,mode=max,scope=bench-native-amd64-${{ inputs.scope_suffix }}
+
+  native-arm64:
+    name: Native arm64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/arm64
+          pull: true
+          push: false
+          cache-from: type=gha,scope=bench-native-arm64-${{ inputs.scope_suffix }}
+          cache-to: type=gha,mode=max,scope=bench-native-arm64-${{ inputs.scope_suffix }}
